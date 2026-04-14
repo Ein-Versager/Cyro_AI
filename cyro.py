@@ -61,7 +61,15 @@ if st.button("🚀 Generuj notatkę"):
                 ]
 
                 # Uproszczona lista modeli - omijamy błędy 404
-                models_to_try = [model_choice, "gemini-1.5-flash", "gemini-1.5-flash-8b"]
+                # Rozszerzona lista modeli, w tym najnowsze wersje 2.0 i 1.5
+                models_to_try = [
+                    model_choice,              # To co wybrałaś w menu
+                    "gemini-2.0-flash-exp",    # Najnowszy model 2.0 (eksperymentalny, bardzo szybki)
+                    "gemini-1.5-flash",        # Standardowy szybki model
+                    "gemini-1.5-flash-8b",     # Najlżejsza wersja (najmniejsza szansa na zajętość)
+                    "gemini-1.0-pro"           # Starsza, ale stabilna wersja pro
+                ]
+                
                 success = False
                 
                 for m_name in models_to_try:
