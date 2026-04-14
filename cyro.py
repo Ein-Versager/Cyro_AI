@@ -49,9 +49,16 @@ if st.button("🚀 Generuj notatkę"):
     elif not input_text:
         st.warning("Najpierw wklej tekst.")
     else:
-        with st.spinner("Agent analizuje dane przez oficjalny protokół..."):
+        with st.spinner("Agent analizuje dane..."):
             # Konfiguracja biblioteki
             genai.configure(api_key=api_key)
+
+            safety_settings = [
+                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+                ]
             
             # Lista modeli do sprawdzenia
             models_to_try = [model_choice, "gemini-1.5-flash", "gemini-1.5-flash-8b"]
