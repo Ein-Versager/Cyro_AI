@@ -19,9 +19,9 @@ st.markdown("### Profesjonalny asystent upraszczania tekstów naukowych")
 with st.sidebar:
     st.header("⚙️ Ustawienia")
     api_key = st.text_input("Gemini API Key:", type="password", value="")
-    model_choice = st.selectbox("Model główny:", ["gemini-1.5-flash", "gemini-1.5-pro"])
+    model_choice = st.selectbox("Model główny:", ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"])
     st.divider()
-    st.info("Agent sprawdzi alternatywne modele w razie przeciążenia.")
+    st.info("Agent automatycznie sprawdzi alternatywne modele w razie przeciążenia.")
 
 # 4. Interfejs główny
 input_text = st.text_area("Wklej tekst naukowy:", height=250, placeholder="Wklej tutaj treść publikacji...")
@@ -51,8 +51,10 @@ if st.button("🚀 Generuj notatkę"):
     else:
         with st.spinner("Agent analizuje dane..."):
             try:
+                # Konfiguracja API
                 genai.configure(api_key=api_key)
                 
+                # Wyłączenie filtrów (blokady tekstów naukowych)
                 safety_settings = [
                     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
                     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -60,26 +62,21 @@ if st.button("🚀 Generuj notatkę"):
                     {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
                 ]
 
-                # Uproszczona lista modeli - omijamy błędy 404
-                # Rozszerzona lista modeli, w tym najnowsze wersje 2.0 i 1.5
-                models_to_try = [
-                    model_choice,              # To co wybrałaś w menu
-                    "gemini-2.0-flash-exp",    # Najnowszy model 2.0 (eksperymentalny, bardzo szybki)
-                    "gemini-1.5-flash",        # Standardowy szybki model
-                    "gemini-1.5-flash-8b",     # Najlżejsza wersja (najmniejsza szansa na zajętość)
-                    "gemini-1.0-pro"           # Starsza, ale stabilna wersja pro
-                ]
-                
+                # Lista modeli do przetestowania
+                models_to_try = [model_choice, "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-2.0-flash-exp"]
                 success = False
                 
                 for m_name in models_to_try:
                     try:
+                        # Próba wywołania konkretnego modelu
                         model = genai.GenerativeModel(model_name=m_name, safety_settings=safety_settings)
-                        full_prompt = f"Jesteś pomocnym edytorem. Cel: {levels_map[level]}. Przedstaw wynik jako listę punktową w języku polskim. Tekst: {input_text}"
+                        
+                        full_prompt = f"Rola: Edytor. Cel: {levels_map[level]}. Format: lista punktowa, język polski. Tekst: {input_text}"
                         
                         response = model.generate_content(full_prompt)
                         
-                        if response.text:
+                        # Sprawdzenie czy AI coś zwróciło
+                        if response and response.text:
                             st.markdown("---")
                             st.balloons()
                             st.subheader(f"📝 Wynik (Model: {m_name}):")
@@ -87,15 +84,15 @@ if st.button("🚀 Generuj notatkę"):
                             success = True
                             break
                     except Exception as e:
-                        st.toast(f"Model {m_name} nie odpowiedział. Próbuję kolejny...")
-                        continue 
-                
+                        st.toast(f"Model {m_name} niedostępny, sprawdzam kolejny...")
+                        continue
+
                 if not success:
-                    st.error("Wszystkie modele AI są obecnie zajęte lub klucz API jest nieaktywny.")
-                    with st.expander("Szczegóły problemu"):
-                        st.write("1. Sprawdź czy Twój klucz API jest poprawny.")
-                        st.write("2. Spróbuj użyć krótszego fragmentu tekstu.")
-                        st.write("3. Jeśli jesteś w szkole, sieć może blokować połączenie z Google AI.")
+                    st.error("Wszystkie modele AI odmówiły odpowiedzi (prawdopodobnie błąd regionu lub klucza).")
+                    with st.expander("Zobacz co możesz zrobić:"):
+                        st.write("1. Sprawdź, czy Twój klucz API jest poprawny (bez spacji).")
+                        st.write("2. Jeśli jesteś w szkole, sieć może blokować serwery Google.")
+                        st.write("3. Spróbuj udostępnić internet z telefonu (hotspot).")
 
             except Exception as e:
                 st.error(f"Błąd krytyczny: {e}")
