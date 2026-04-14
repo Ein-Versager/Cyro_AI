@@ -1,12 +1,11 @@
 import streamlit as st
-import requests
-import json
+import google.generativeai as genai
 import time
 
-# Konfiguracja strony
+# 1. Konfiguracja strony
 st.set_page_config(page_title="CYRO_AI", page_icon="🧠", layout="centered")
 
-# Style CSS
+# 2. Styl CSS (poprawiony - bez 'rfr')
 st.markdown("""
     <style>
     .stButton>button { width: 100%; border-radius: 20px; height: 3em; background-color: #4CAF50; color: white; }
@@ -16,17 +15,22 @@ st.markdown("""
 st.title("🧠 CYRO_AI")
 st.markdown("### Profesjonalny asystent upraszczania tekstów naukowych")
 
-# --- PASEK BOCZNY ---
+# 3. Pasek boczny
 with st.sidebar:
     st.header("⚙️ Ustawienia")
-    api_key = st.text_input("Gemini API Key:", type="password", value="AIzaSyCCg4KdxaJFFQkP3r37EGGnwua4t0vgrrI")
+    api_key = st.text_input("Gemini API Key:", type="password", value="")
     model_choice = st.selectbox("Model główny:", ["gemini-1.5-flash", "gemini-1.5-pro"])
     st.divider()
-    st.info("Agent automatycznie sprawdzi alternatywne modele w razie przeciążenia.")
+    st.info("Agent sprawdzi alternatywne modele w razie przeciążenia.")
 
-# --- INTERFEJS GŁÓWNY ---
+# 4. Interfejs główny
 input_text = st.text_area("Wklej tekst naukowy:", height=250, placeholder="Wklej tutaj treść publikacji...")
-level = st.select_slider("Skala uproszczenia:", options=[1, 2, 3, 4, 5], value=3)
+
+level = st.select_slider(
+    "Skala uproszczenia:",
+    options=[1, 2, 3, 4, 5],
+    value=3
+)
 
 levels_map = {
     1: "Poziom Ekspert: Streszczenie akademickie, zachowaj terminologię.",
@@ -35,56 +39,53 @@ levels_map = {
     4: "Poziom Prosty: Używaj metafor, unikaj żargonu.",
     5: "Poziom ELI5: Wyjaśnij jak dziecku, maksimum obrazowych porównań."
 }
+
 st.caption(f"🎯 **Cel:** {levels_map[level]}")
 
-def call_gemini(model_name, level_val, text):
-    # Ważne: używamy v1beta dla lepszej kompatybilności z darmowymi kluczami
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-    headers = {'Content-Type': 'application/json'}
-    prompt = f"Jesteś edytorem. Cel: {levels_map[level_val]}. Format: lista punktowa, język polski. Przetransformuj ten tekst: {text}"
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    
-    try:
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
-        return response
-    except Exception:
-        return None
-
+# 5. Logika generowania (Oficjalna biblioteka)
 if st.button("🚀 Generuj notatkę"):
     if not api_key:
         st.error("Brak klucza API!")
     elif not input_text:
         st.warning("Najpierw wklej tekst.")
     else:
-        with st.spinner("Agent analizuje dane..."):
-            # Lista modeli poza pętlą
-            models_to_try = [model_choice, "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.0-pro"]
-            success = False
-            last_res = None
+        with st.spinner("Agent analizuje dane przez oficjalny protokół..."):
+            # Konfiguracja biblioteki
+            genai.configure(api_key=api_key)
             
-            for m in models_to_try:
-                res = call_gemini(m, level, input_text)
-                last_res = res
-                
-                if res and res.status_code == 200:
-                    try:
-                        data = res.json()
-                        output = data['candidates'][0]['content']['parts'][0]['text']
-                        st.markdown("---")
-                        st.balloons()
-                        st.subheader("📝 Wynik transformacji:")
-                        st.write(output)
-                        success = True
-                        break
-                    except:
-                        st.warning(f"Błąd danych z modelu {m}. Próbuję dalej...")
-                else:
-                    st.toast(f"Model {m} niedostępny. Szukam dalej...")
-                    time.sleep(1) # Chwila przerwy przed kolejnym modelem
+            # Lista modeli do sprawdzenia
+            models_to_try = [model_choice, "gemini-1.5-flash", "gemini-1.5-flash-8b"]
+            success = False
+            
+            for m_name in models_to_try:
+                try:
+                    # Wybór modelu
+                    model = genai.GenerativeModel(m_name)
+                    
+                    # Przygotowanie promptu
+                    full_prompt = f"Rola: Edytor. Cel: {levels_map[level]}. Format: lista punktowa, język polski. Tekst: {input_text}"
+                    
+                    # Generowanie (z timeoutem wbudowanym w bibliotekę)
+                    response = model.generate_content(full_prompt)
+                    
+                    # Wyświetlenie wyniku
+                    st.markdown("---")
+                    st.balloons()
+                    st.subheader(f"📝 Wynik (Model: {m_name}):")
+                    st.write(response.text)
+                    
+                    success = True
+                    break # Wyjście z pętli po sukcesie
+                    
+                except Exception as e:
+                    st.toast(f"Model {m_name} nie odpowiedział. Próbuję kolejny...")
+                    time.sleep(1)
             
             if not success:
-                st.error("Wszystkie modele AI są obecnie zajęte.")
-                if last_res:
-                    with st.expander("Szczegóły błędu"):
-                        st.write(f"Kod: {last_res.status_code}")
-                        st.write(last_res.text)
+                st.error("Wszystkie modele AI są obecnie zajęte lub klucz API jest nieaktywny.")
+                with st.expander("Dlaczego to się dzieje?"):
+                    st.write("""
+                    1. **Region:** Darmowe klucze czasem nie działają na serwerach w USA/UE.
+                    2. **Limity:** Przekroczono liczbę słów na minutę dla planu 'Free'.
+                    3. **Bezpieczeństwo:** Google zablokował odpowiedź, bo tekst zawiera wrażliwe dane.
+                    """)
