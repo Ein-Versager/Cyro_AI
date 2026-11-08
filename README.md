@@ -19,3 +19,4 @@ This project is specifically designed for Google Colab, a free workspace that al
 To use this code, you will need your own API key, which you can obtain from Google AI Studio or sth like that.
 
 Have fun, it’s just vibe-code, since my teacher told me to do it.
+uh, I tried to check if it still works, and I guess it doesn't
