@@ -1,98 +1,88 @@
-import streamlit as st
-import google.generativeai as genai
+#@title 🛠️ Panel Konfiguracyjny Analizatora { display-mode: "form" }
+import os
+import requests
+import json
 import time
+from IPython.display import display, Markdown
 
-# 1. Konfiguracja strony
-st.set_page_config(page_title="CYRO_AI", page_icon="🧠", layout="centered")
+#@markdown ### 🔑 Autoryzacja i Konfiguracja
+#@markdown Wprowadź swój klucz API z Google AI Studio (wartość zostanie zamaskowana):
+api_key = "" #@param {type:"string"}
 
-# 2. Styl CSS
-st.markdown("""
-    <style>
-    .stButton>button { width: 100%; border-radius: 20px; height: 3em; background-color: #4CAF50; color: white; }
-    </style>
-    """, unsafe_allow_html=True)
+#@markdown ### 📝 Dane Wejściowe
+#@markdown Wklej tutaj tekst, który chcesz poddać analizie:
+input_text = "None" #@param {type:"string"}
 
-st.title("🧠 CYRO_AI")
-st.markdown("### Profesjonalny asystent upraszczania tekstów naukowych")
+#@markdown Poziom szczegółowości notatki (1 - najprostszy, 5 - najpełniejszy):
+level = 3 #@param {type:"slider", min:1, max:5, step:1}
 
-# 3. Pasek boczny
-with st.sidebar:
-    st.header("⚙️ Ustawienia")
-    api_key = st.text_input("Gemini API Key:", type="password", value="")
-    model_choice = st.selectbox("Model główny:", ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"])
-    st.divider()
-    st.info("Agent automatycznie sprawdzi alternatywne modele w razie przeciążenia.")
+def call_gemini(model_name):
+    # Użycie klucza z formularza, a w przypadku jego braku próba pobrania ze zmiennych środowiskowych
+    active_key = api_key if api_key else os.environ.get("GEMINI_API_KEY", "")
+    
+    if not active_key:
+        raise ValueError("Brak klucza API! Wpisz go w polu 'api_key' powyżej.")
 
-# 4. Interfejs główny
-input_text = st.text_area("Wklej tekst naukowy:", height=250, placeholder="Wklej tutaj treść publikacji...")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={active_key}"
+    headers = {'Content-Type': 'application/json'}
 
-level = st.select_slider(
-    "Skala uproszczenia:",
-    options=[1, 2, 3, 4, 5],
-    value=3
-)
+    payload = {
+        "system_instruction": {
+            "parts": [{
+                "text": f"""Jesteś precyzyjnym analitykiem tekstów edukacyjnych.
+ZASADY KRYTYCZNE:
+1. WALIDACJA KOMPLETNOŚCI: Jeśli tekst jest wyraźnie urwany, odpowiedz: "BŁĄD: Przesłany tekst jest niekompletny".
+2. FAKT-CHECKING: Odmawiaj analizy treści o niskiej wiarygodności (Komunikat: "BŁĄD: Treści niewiarygodne").
+3. ZAKRES: Nie wykonuj zadań kreatywnych (Komunikat: "BŁĄD: Zapytanie poza zakresem").
 
-levels_map = {
-    1: "Poziom Ekspert: Streszczenie akademickie, zachowaj terminologię.",
-    2: "Poziom Student: Język formalny, skup się na konkretach.",
-    3: "Poziom Standard: Język potoczny, wyjaśnij trudne pojęcia.",
-    4: "Poziom Prosty: Używaj metafor, unikaj żargonu.",
-    5: "Poziom ELI5: Wyjaśnij jak dziecku, maksimum obrazowych porównań."
-}
+FORMATOWANIE (Poziom {level}/5):
+- Nagłówek głównego tematu, pod nim nagłówki pomniejszych zagadnień
+- Stosowanie streszczenia zależnego od mocy i listy od myślników
+- Długość tekstu zależna od poziomu uproszczenia
+- Zakaz znaków specjalnych ($, \\, [ ]).
+- Format notatki
+- Poziom {level} dostosowany do stopnia edukacji
+- Format streszczonej notatki, ale nadal zawierającej nagłówki zagadnień i rozbudowane podpunkty
+- Zakaz powitań i wstępów."""
+            }]
+        },
+        "contents": [{
+            "parts": [{
+                "text": f"Format: Lista punktowa. Poziom szczegółowości: {level}/5. Przeanalizuj poniższy tekst: {input_text}"
+            }]
+        }]
+    }
 
-st.caption(f"🎯 **Cel:** {levels_map[level]}")
+    return requests.post(url, headers=headers, data=json.dumps(payload))
 
-# 5. Logika generowania
-if st.button("🚀 Generuj notatkę"):
-    if not api_key:
-        st.error("Brak klucza API!")
-    elif not input_text:
-        st.warning("Najpierw wklej tekst.")
-    else:
-        with st.spinner("Agent analizuje dane..."):
-            try:
-                # Konfiguracja API
-                genai.configure(api_key=api_key)
-                
-                # Wyłączenie filtrów (blokady tekstów naukowych)
-                safety_settings = [
-                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-                ]
+def start():
+    if not api_key and not os.environ.get("GEMINI_API_KEY"):
+        print("❌ BŁĄD: Proszę wprowadzić klucz API w formularzu powyżej!")
+        return
 
-                # Lista modeli do przetestowania
-                models_to_try = [model_choice, "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-2.0-flash-exp"]
-                success = False
-                
-                for m_name in models_to_try:
-                    try:
-                        # Próba wywołania konkretnego modelu
-                        model = genai.GenerativeModel(model_name=m_name, safety_settings=safety_settings)
-                        
-                        full_prompt = f"Rola: Edytor. Cel: {levels_map[level]}. Format: lista punktowa, język polski. Tekst: {input_text}"
-                        
-                        response = model.generate_content(full_prompt)
-                        
-                        # Sprawdzenie czy AI coś zwróciło
-                        if response and response.text:
-                            st.markdown("---")
-                            st.balloons()
-                            st.subheader(f"📝 Wynik (Model: {m_name}):")
-                            st.write(response.text)
-                            success = True
-                            break
-                    except Exception as e:
-                        st.toast(f"Model {m_name} niedostępny, sprawdzam kolejny...")
-                        continue
+    models_to_try = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.5-pro"]
 
-                if not success:
-                    st.error("Wszystkie modele AI odmówiły odpowiedzi (prawdopodobnie błąd regionu lub klucza).")
-                    with st.expander("Zobacz co możesz zrobić:"):
-                        st.write("1. Sprawdź, czy Twój klucz API jest poprawny (bez spacji).")
-                        st.write("2. Jeśli jesteś w szkole, sieć może blokować serwery Google.")
-                        st.write("3. Spróbuj udostępnić internet z telefonu (hotspot).")
+    for model in models_to_try:
+        print(f"⏳ Próba połączenia z {model}...")
+        try:
+            response = call_gemini(model)
+        except Exception as e:
+            print(f"❌ Błąd: {e}")
+            return
 
-            except Exception as e:
-                st.error(f"Błąd krytyczny: {e}")
+        if response.status_code == 200:
+            result = response.json()
+            output = result['candidates'][0]['content']['parts'][0]['text']
+            print(f"\n✅ REZULTAT ({model}):")
+            print("-" * 40)
+            display(Markdown(output))
+            print("-" * 40)
+            return
+        elif response.status_code == 503:
+            print(f"⚠️ Model {model} jest przeciążony. Próbuję następny...")
+            time.sleep(1)
+        else:
+            print(f"❌ Błąd {response.status_code} dla {model}: {response.text}")
+            time.sleep(1)
+
+start()
